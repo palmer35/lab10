@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Task1_LexicalAnalyzer": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

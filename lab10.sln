@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35707.178
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Task0_1_Lexical", "lab10\Task0_1_Lexical.csproj", "{1B29B658-A608-4E47-81C0-E00D483595D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Task2_Parser", "Task1_LexicalAnalyzer\Task2_Parser.csproj", "{ED493BE2-C0A2-4DEE-9E71-B24227CA5A03}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Task3_PascalAnalyzer", "Task3_PascalAnalyzer\Task3_PascalAnalyzer.csproj", "{4950138A-BF31-48EA-9D03-054F42EA996F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1B29B658-A608-4E47-81C0-E00D483595D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B29B658-A608-4E47-81C0-E00D483595D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B29B658-A608-4E47-81C0-E00D483595D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B29B658-A608-4E47-81C0-E00D483595D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ED493BE2-C0A2-4DEE-9E71-B24227CA5A03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED493BE2-C0A2-4DEE-9E71-B24227CA5A03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED493BE2-C0A2-4DEE-9E71-B24227CA5A03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED493BE2-C0A2-4DEE-9E71-B24227CA5A03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4950138A-BF31-48EA-9D03-054F42EA996F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4950138A-BF31-48EA-9D03-054F42EA996F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4950138A-BF31-48EA-9D03-054F42EA996F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4950138A-BF31-48EA-9D03-054F42EA996F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
