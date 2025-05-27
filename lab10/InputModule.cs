@@ -1,8 +1,8 @@
 ﻿public class InputModule : IDisposable
 {
     private readonly StreamReader _reader;
-    public char CurrentChar { get; private set; }
-    public bool EndOfFile { get; private set; }
+    public char currentChar { get; private set; }
+    public bool endOfFile { get; private set; }
 
     public InputModule(string filename)
     {
@@ -27,11 +27,10 @@
         int ch = _reader.Read();
         if (ch == -1)
         {
-            EndOfFile = true;
-            return '\0';
+            endOfFile = true;
         }
-        CurrentChar = (char)ch;
-        return CurrentChar;
+        currentChar = (char)ch;
+        return currentChar;
     }
 
     public void Dispose() => _reader?.Dispose();

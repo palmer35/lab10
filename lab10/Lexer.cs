@@ -13,47 +13,40 @@ public class Lexer : IDisposable
         _input = new InputModule(filename);
     }
 
-    // Первый этап: генерация кодов символов
     public void GenerateCharCodes(string outputFilename)
     {
         using var writer = new StreamWriter(outputFilename);
-        while (!_input.EndOfFile)
+        while (!_input.endOfFile)
         {
             char ch = _input.NextChar();
-            if (!_input.EndOfFile && ch != '\r' && ch != '\n')
+            if (!_input.endOfFile && ch != '\r' && ch != '\n')
                 writer.Write((int)ch + " ");
         }
     }
 
-
-    // Второй этап: проверка чисел и ключевых слов
     public void Analyze()
     {
         _input.Dispose();
         var text = File.ReadAllText("test.pas");
 
-        // Проверка чисел
-        foreach (var word in text.Split(" \n\t;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries))
+        var words = text.Split(" \n\t;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var word in words)
         {
-            if (int.TryParse(word, out _) && IsNumberInvalid(word))
+            if (long.TryParse(word, out long value) && (value > int.MaxValue || value < int.MinValue))
             {
                 Console.WriteLine("[Ошибка 200]: Число вне диапазона - " + word);
                 ErrorTable.Report(200);
             }
         }
 
-        // Проверка ключевых слов
-        foreach (var word in text.Split(" \n\t;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries))
+        foreach (var word in words)
         {
             if (_keywords.Contains(word.ToLower()))
                 Console.WriteLine($"Ключевое слово: {word}");
         }
-    }
 
-    private bool IsNumberInvalid(string num)
-    {
-        return !int.TryParse(num, out int _) || long.Parse(num) > int.MaxValue;
     }
-
+ 
     public void Dispose() => _input.Dispose();
 }

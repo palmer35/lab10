@@ -1,7 +1,4 @@
-﻿using System;
-using System.IO;
-
-namespace Task0_1_Lexical
+﻿namespace Task0_1_Lexical
 {
     class Program
     {
@@ -15,12 +12,10 @@ namespace Task0_1_Lexical
             {
                 var lexer = new Lexer(inputFile);
 
-                // Первый этап: генерация кодов символов
                 lexer.GenerateCharCodes(outputFile);
                 Console.WriteLine($"Коды символов записаны в {outputFile}");
                 Console.WriteLine("Содержимое: " + File.ReadAllText(outputFile));
 
-                // Второй этап: анализ (проверка чисел и ключевых слов)
                 lexer.Analyze();
 
                 lexer.Dispose();
