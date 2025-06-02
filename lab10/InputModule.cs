@@ -24,13 +24,15 @@
 
     public char NextChar()
     {
-        int ch = _reader.Read();
+        int ch = _reader.Read();        
         if (ch == -1)
         {
-            endOfFile = true;
+            endOfFile = true;           
+            return '\0';             
         }
-        currentChar = (char)ch;
-        return currentChar;
+
+        currentChar = (char)ch;         
+        return currentChar;             
     }
 
     public void Dispose() => _reader?.Dispose();

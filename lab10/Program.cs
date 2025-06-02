@@ -1,6 +1,6 @@
 ﻿namespace Task0_1_Lexical
 {
-    class Program
+    public class Program
     {
         static void Main()
         {
@@ -13,27 +13,31 @@
                 var lexer = new Lexer(inputFile);
 
                 lexer.GenerateCharCodes(outputFile);
-                Console.WriteLine($"Коды символов записаны в {outputFile}");
-                Console.WriteLine("Содержимое: " + File.ReadAllText(outputFile));
+                Console.WriteLine($"Коды лексем записаны в {outputFile}");
+                Console.WriteLine("Содержимое: " + File.ReadAllText(outputFile) + "\n");
 
                 lexer.Analyze();
-
                 lexer.Dispose();
             }
-            catch (Exception ex)
+            catch (FileNotFoundException)
             {
-                Console.WriteLine($"Ошибка: {ex.Message}");
+                ErrorTable.Report(100);
+            }
+            catch (IOException)
+            {
+                ErrorTable.Report(101);
             }
 
             Console.WriteLine("\n=== Тест 2: Обработка ошибки ===");
             try
             {
-                new InputModule("invalid.pas");
+                new Lexer("invalid.pas");
             }
-            catch
+            catch (FileNotFoundException)
             {
                 Console.WriteLine("Ожидаемая ошибка: файл не найден (тест пройден)");
             }
+
         }
     }
 }

@@ -1,287 +1,324 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using Task0_1_Lexical;
+using static Task2_3_ParserSemantic.VarDeclNode;
 
-namespace Task2_Parser
+namespace Task2_3_ParserSemantic
 {
     public class Parser
     {
-        private readonly Lexer _lexer;
-        private Token _currentToken;
+        private readonly List<string> _tokens;
+        private int _pos = 0;
+        private int _line = 1;
 
-        private List<string> _errors = new List<string>();
-
-        public Parser(Lexer lexer)
+        private readonly Dictionary<string, string> tokenNames = new()
         {
-            _lexer = lexer;
-            _currentToken = _lexer.GetNextToken();
+            { "1", "program" }, { "2", "var" }, { "3", "const" }, { "4", "begin" }, { "5", "end" },
+            { "6", "integer" }, { "7", "array" }, { "ID", "идентификатор" }, { ":=", ":=" },
+            { ";", ";" }, { ":", ":" }, { ".", "." }, { "[", "[" }, { "]", "]" }, { "+", "+" }, { "-", "-" },
+            { "..", ".." }, { "of", "of" }
+        };
+
+        public Parser(IEnumerable<string> tokens)
+        {
+            _tokens = tokens.ToList();
         }
 
-        private void Error(string message)
+        public ProgramNode ParseProgram()
         {
-            string fullMessage = $"Ошибка: {message} на токене {_currentToken}";
-            _errors.Add(fullMessage);
-            Console.WriteLine(fullMessage); // ← Добавь это, чтобы видеть сразу
-            _currentToken = _lexer.GetNextToken();
-        }
+            var node = new ProgramNode();
 
-        private void Eat(TokenType type)
-        {
-            if (_currentToken.Type == type)
-            {
-                _currentToken = _lexer.GetNextToken();
-            }
-            else
-            {
-                Error($"Ожидался токен типа {type}");
-            }
-        }
+            // program <ID> ;
+            if (!Expect("1", "program")) SkipTo(new[] { "ID", ";" });
+            if (!Expect("ID", "идентификатор")) SkipTo(new[] { ";" });
+            Expect(";", ";");
 
-        public void Parse()
-        {
-            // Примерно так:
-            while (_currentToken.Type != TokenType.EOF)
+            // var блок
+            if (Peek() == "2") // var
             {
-                if (_currentToken.Type == TokenType.Keyword)
+                Read(); // пропустить "var"
+                while (Peek() == "ID")
                 {
-                    switch (_currentToken.Value)
+                    var name = Read(); // ID
+
+                    if (!Expect(":", ":")) { SkipTo(new[] { ";" }); ReadIf(";"); continue; }
+
+                    // Разбор типа: integer или array [ <число> .. <число> ] of integer
+                    if (Peek() == "6")
                     {
-                        case "program":
-                            ParseProgramHeader();
-                            break;
-                        case "const":
-                            ParseConstBlock();
-                            break;
-                        case "var":
-                            ParseVariableDeclaration();
-                            break;
-                        case "begin":
-                            ParseCompoundStatement();
-                            break;
-                        default:
-                            // Нейтрализация для неизвестных ключевых слов
-                            Error($"Неожиданное ключевое слово '{_currentToken.Value}'");
-                            break;
+                        // простые переменные
+                        var typeText = GetReadable(Read()); // "integer"
+                        node.Declarations.Add(new VarDeclNode { Name = name, Type = typeText });
                     }
-                }
-                else
-                {
-                    Error("Неожиданный токен, ожидалось ключевое слово");
-                }
-            }
-        }
-
-        private void ParseProgramHeader()
-        {
-            Eat(TokenType.Keyword); // program
-
-            if (_currentToken.Type == TokenType.Identifier)
-            {
-                Eat(TokenType.Identifier);
-            }
-            else
-            {
-                Error("Ожидался идентификатор после 'program'");
-            }
-
-            if (_currentToken.Type == TokenType.Semicolon)
-            {
-                Eat(TokenType.Semicolon);
-            }
-            else
-            {
-                Error("Ожидался ';' после заголовка программы");
-            }
-        }
-
-        private void ParseConstBlock()
-        {
-            Eat(TokenType.Keyword); // const
-
-            // Пример простой нейтрализации: пропускаем все до var или begin или EOF
-            while (_currentToken.Type != TokenType.Keyword ||
-                  (_currentToken.Value != "var" && _currentToken.Value != "begin"))
-            {
-                if (_currentToken.Type == TokenType.EOF)
-                    break;
-                _currentToken = _lexer.GetNextToken();
-            }
-        }
-
-        private void ParseVariableDeclaration()
-        {
-            // var <id> {, <id>} : <type> ;
-            Eat(TokenType.Keyword); // var
-
-            while (_currentToken.Type == TokenType.Identifier)
-            {
-                List<string> identifiers = new List<string>();
-                identifiers.Add(_currentToken.Value);
-                Eat(TokenType.Identifier);
-
-                while (_currentToken.Type == TokenType.Comma)
-                {
-                    Eat(TokenType.Comma);
-                    if (_currentToken.Type == TokenType.Identifier)
+                    else if (Peek() == "7")
                     {
-                        identifiers.Add(_currentToken.Value);
-                        Eat(TokenType.Identifier);
+                        Read(); // "array"
+                        var typeText = "array";
+
+                        if (!Expect("[", "[")) { SkipTo(new[] { ";" }); ReadIf(";"); continue; }
+
+                        // нижняя граница
+                        if (int.TryParse(Peek(), out var lower))
+                        {
+                            typeText += $"[{lower}";
+                            Read();
+                        }
+                        else
+                        {
+                            ReportSyntaxError("число");
+                            SkipTo(new[] { "..", "]", ";" });
+                            if (Peek() == "..") { Read(); }
+                            if (int.TryParse(Peek(), out lower))
+                            {
+                                typeText += $"[{lower}";
+                                Read();
+                            }
+                        }
+
+                        if (!Expect("..", "..")) { SkipTo(new[] { "]", ";" }); }
+
+                        // верхняя граница
+                        if (int.TryParse(Peek(), out var upper))
+                        {
+                            typeText += $"..{upper}]";
+                            Read();
+                        }
+                        else
+                        {
+                            ReportSyntaxError("число");
+                            SkipTo(new[] { "]", ";" });
+                            if (int.TryParse(Peek(), out upper))
+                            {
+                                typeText += $"..{upper}]";
+                                Read();
+                            }
+                        }
+
+                        if (!Expect("]", "]")) { SkipTo(new[] { "of", ";" }); }
+
+                        if (!Expect("of", "of")) { SkipTo(new[] { "6", ";" }); }
+
+                        if (Peek() == "6")
+                        {
+                            var baseType = GetReadable(Read()); // "integer"
+                            typeText += $" of {baseType}";
+                        }
+                        else
+                        {
+                            ReportSyntaxError("integer");
+                            SkipTo(new[] { ";" });
+                        }
+
+                        node.Declarations.Add(new VarDeclNode { Name = name, Type = typeText });
                     }
                     else
                     {
-                        Error("Ожидался идентификатор после запятой");
-                        break;
+                        ReportSyntaxError("тип (integer или array)");
+                        SkipTo(new[] { ";" });
+                        ReadIf(";");
+                        continue;
                     }
-                }
 
-                if (_currentToken.Type == TokenType.Colon)
-                {
-                    Eat(TokenType.Colon);
-                    ParseType();
+                    Expect(";", ";");
                 }
-                else
-                {
-                    Error("Ожидался ':' после списка идентификаторов");
-                }
-
-                if (_currentToken.Type == TokenType.Semicolon)
-                {
-                    Eat(TokenType.Semicolon);
-                }
-                else
-                {
-                    Error("Ожидался ';' после объявления переменных");
-                    // Нейтрализация: пропускаем до ';' или следующего ключевого слова
-                    while (_currentToken.Type != TokenType.Semicolon && _currentToken.Type != TokenType.Keyword && _currentToken.Type != TokenType.EOF)
-                    {
-                        _currentToken = _lexer.GetNextToken();
-                    }
-                    if (_currentToken.Type == TokenType.Semicolon)
-                        Eat(TokenType.Semicolon);
-                }
-
-                if (_currentToken.Type != TokenType.Identifier)
-                    break; // Нет больше переменных
             }
-        }
 
-        private void ParseType()
-        {
-            if (_currentToken.Type == TokenType.Keyword && _currentToken.Value == "integer")
+            // begin ... end.
+            if (!Expect("4", "begin"))
             {
-                Eat(TokenType.Keyword);
-            }
-            else if (_currentToken.Type == TokenType.Keyword && _currentToken.Value == "array")
-            {
-                Eat(TokenType.Keyword); // array
-                Eat(TokenType.Of); // "of" — но мы не добавили TokenType.Of, потому что он в ключевых словах. Добавим!
-                if (_currentToken.Type == TokenType.Keyword && _currentToken.Value == "of")
-                {
-                    Eat(TokenType.Keyword);
-                }
-                else
-                {
-                    Error("Ожидалось ключевое слово 'of' после 'array'");
-                }
-                if (_currentToken.Type == TokenType.Keyword && _currentToken.Value == "integer")
-                {
-                    Eat(TokenType.Keyword);
-                }
-                else
-                {
-                    Error("Ожидался тип 'integer' после 'array of'");
-                }
+                SkipTo(new[] { "5", "." });
             }
             else
             {
-                Error("Ожидался тип 'integer' или 'array of integer'");
-            }
-        }
-
-        private void ParseCompoundStatement()
-        {
-            // begin <statements> end
-            Eat(TokenType.Keyword); // begin
-
-            while (_currentToken.Type != TokenType.Keyword || _currentToken.Value != "end")
-            {
-                if (_currentToken.Type == TokenType.Identifier)
+                // разобрали "begin"
+                while (Peek() != "5" && Peek() != null) // пока не "end"
                 {
-                    ParseAssignmentStatement();
+                    var stmt = ParseStatement();
+                    if (stmt != null)
+                        node.Statements.Add(stmt);
                 }
-                else
+
+                Expect("5", "end");
+                Expect(".", ".");
+            }
+
+            return node;
+        }
+
+        private StatementNode ParseStatement()
+        {
+            if (Peek() == "4") // вложенный begin
+            {
+                Read(); // "begin"
+                var comp = new CompoundNode();
+                while (Peek() != "5" && Peek() != null)
                 {
-                    Error("Ожидался идентификатор или 'end' в составном операторе");
-                    if (_currentToken.Type == TokenType.EOF)
-                        break;
-                    else
-                        _currentToken = _lexer.GetNextToken();
+                    var inner = ParseStatement();
+                    if (inner != null)
+                        comp.Statements.Add(inner);
                 }
+                Expect("5", "end");
+                Expect(";", ";"); // точку с запятой после end; (если нет — сообщаем ошибку, но продолжаем)
+                return comp;
             }
 
-            if (_currentToken.Type == TokenType.Keyword && _currentToken.Value == "end")
+            if (Peek() == "ID")
             {
-                Eat(TokenType.Keyword);
-                if (_currentToken.Type == TokenType.Dot)
-                    Eat(TokenType.Dot);
-                else
-                    Error("Ожидалась '.' после 'end'");
+                var varName = Read(); // имя переменной
+                ExpressionNode index = null;
+
+                if (Peek() == "[")
+                {
+                    Read(); // "["
+                    index = ParseExpression();
+                    Expect("]", "]");
+                }
+
+                if (!Expect(":=", ":="))
+                {
+                    SkipTo(new[] { ";" });
+                    ReadIf(";");
+                    return null;
+                }
+
+                var expr = ParseExpression();
+
+                Expect(";", ";");
+
+                return new AssignmentNode
+                {
+                    Variable = varName,
+                    IndexExpression = index,
+                    Expression = expr
+                };
             }
-            else
-            {
-                Error("Ожидался 'end' в составном операторе");
-            }
+
+            ReportError($"Ожидалось начало оператора, найдено '{GetReadable(Peek())}'");
+            Read(); // пропустить неверный токен
+            return null;
         }
 
-        private void ParseAssignmentStatement()
+        private ExpressionNode ParseExpression()
         {
-            // <id> := <expression> ;
-            Eat(TokenType.Identifier);
-
-            if (_currentToken.Type == TokenType.Assign)
+            var left = ParseTerm();
+            while (Peek() == "+" || Peek() == "-")
             {
-                Eat(TokenType.Assign);
+                var op = Read();
+                var right = ParseTerm();
+                left = new BinaryExprNode { Op = op, Left = left, Right = right };
             }
-            else
-            {
-                Error("Ожидался ':=' в операторе присваивания");
-            }
-
-            ParseExpression();
-
-            if (_currentToken.Type == TokenType.Semicolon)
-            {
-                Eat(TokenType.Semicolon);
-            }
-            else
-            {
-                Error("Ожидался ';' после оператора присваивания");
-            }
+            return left;
         }
 
-        private void ParseExpression()
+        private ExpressionNode ParseTerm()
         {
-            // Очень упрощённо: принимаем только числа или идентификаторы с операторами +, -, *, /
-            ParseTerm();
-
-            while (_currentToken.Type == TokenType.Symbol && ("+-*/".Contains(_currentToken.Value)))
+            if (int.TryParse(Peek(), out var num))
             {
-                Eat(TokenType.Symbol);
-                ParseTerm();
+                Read();
+                return new NumberNode { Value = num };
             }
+
+            if (Peek() == "ID")
+            {
+                var name = Read();
+                if (Peek() == "[")
+                {
+                    Read(); // "["
+                    var idx = ParseExpression();
+                    Expect("]", "]");
+                    return new IdentifierNode { Name = $"{name}[{FormatIndex(idx)}]" };
+                }
+                return new IdentifierNode { Name = name };
+            }
+
+            ReportError($"Неожиданный токен в выражении: '{GetReadable(Peek())}'");
+            Read();
+            return null;
         }
 
-        private void ParseTerm()
+        private string Peek() => _pos < _tokens.Count ? _tokens[_pos] : null;
+
+        private string Read()
         {
-            if (_currentToken.Type == TokenType.Number || _currentToken.Type == TokenType.Identifier)
+            if (_pos >= _tokens.Count) return null;
+            var tok = _tokens[_pos++];
+            if (tok == "EOL") _line++;
+            return tok;
+        }
+
+        /// <summary>
+        /// Проверяет, что Peek() равен expectedCode; если нет, вызывает ReportSyntaxError,
+        /// затем читает текущий токен (если он не null). Возвращает true, если ожидание совпало.
+        /// </summary>
+        private bool Expect(string expectedCode, string expectedName)
+        {
+            if (Peek() != expectedCode)
             {
-                Eat(_currentToken.Type);
+                ReportSyntaxError(expectedName);
+                if (Peek() != null)
+                    Read();
+                return false;
             }
-            else
+            Read();
+            return true;
+        }
+
+        /// <summary>
+        /// Если Peek() равен токену code, читает его и возвращает true; иначе возвращает false.
+        /// </summary>
+        private bool ReadIf(string code)
+        {
+            if (Peek() == code)
             {
-                Error("Ожидался идентификатор или число в выражении");
+                Read();
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Пропускает токены до тех пор, пока не встретит любой из синхронизирующих токенов из syncSet
+        /// или не дойдёт до конца. Затем останавливается перед этим токеном.
+        /// </summary>
+        private void SkipTo(string[] syncSet)
+        {
+            while (Peek() != null && !syncSet.Contains(Peek()))
+            {
+                Read();
             }
         }
 
-        public IReadOnlyList<string> GetErrors() => _errors;
+        private void ReportSyntaxError(string expected)
+        {
+            Console.WriteLine($"[Синтаксическая ошибка] Строка {_line}: Ожидалось '{expected}', найдено '{GetReadable(Peek())}'");
+        }
+
+        private void ReportError(string msg)
+        {
+            Console.WriteLine($"[Синтаксическая ошибка] Строка {_line}: {msg}");
+        }
+
+        private string GetReadable(string token)
+        {
+            if (token == null) return "EOF";
+            return tokenNames.TryGetValue(token, out var name) ? name : token;
+        }
+
+        /// <summary>
+        /// Вспомогательный метод для формирования текстового представления индексированного идентификатора.
+        /// </summary>
+        private string FormatIndex(ExpressionNode idx)
+        {
+            return idx switch
+            {
+                NumberNode n => n.Value.ToString(),
+                IdentifierNode id => id.Name,
+                BinaryExprNode b => $"({FormatIndex(b.Left)} {b.Op} {FormatIndex(b.Right)})",
+                _ => ""
+            };
+        }
+
+
     }
 }
