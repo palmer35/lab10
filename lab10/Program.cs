@@ -12,11 +12,11 @@
             {
                 var lexer = new Lexer(inputFile);
 
-                lexer.GenerateCharCodes(outputFile);
+                lexer.GenerateTokenCodes(outputFile);
                 Console.WriteLine($"Коды лексем записаны в {outputFile}");
                 Console.WriteLine("Содержимое: " + File.ReadAllText(outputFile) + "\n");
 
-                lexer.Analyze();
+                lexer.AnalyzeSourceCode();
                 lexer.Dispose();
             }
             catch (FileNotFoundException)
