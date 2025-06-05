@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Task0_1_Lexical
@@ -11,20 +7,6 @@ namespace Task0_1_Lexical
     {
         private readonly string _filename;
         private readonly InputModule _input;
-        private readonly Dictionary<string, int> _tokenCodes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-                { "program",  1 }, { "var", 2 }, { "const", 3 }, { "begin", 4 },
-                { "end", 5 }, { "integer", 6 }, { "array", 7 }, { "of", 8 },
-
-                { ":=", 9 }, { "=", 10 }, { "+", 11 }, { "-", 12 }, { "*", 13 }, { "/", 14 },
-                { "(", 15 }, { ")", 16 }, { ";", 17 }, { ",", 18 }, { ".", 19 }, { ":", 20 },
-
-                { "0", 21 }, { "1", 22 }, { "2", 23 }, { "3", 24 }, { "4", 25 },
-                { "5", 26 }, { "6", 27 }, { "7", 28 }, { "8", 29 }, { "9", 30 },
-
-                { "ID", 31 }
-
-        };
         private const int PascalMaxInt = 32767;
         private const int PascalMinInt = -32768;
         private readonly StringBuilder _tokenBuilder = new StringBuilder();
@@ -37,11 +19,14 @@ namespace Task0_1_Lexical
 
         public void GenerateTokenCodes(string outputFilename)
         {
-            using var writer = new StreamWriter(outputFilename);
+            string outputLexemesFilename = "output_lexemes.txt";
+
+            using var writer = new StreamWriter(outputFilename, false);              
+            using var lexemeWriter = new StreamWriter(outputLexemesFilename, false); 
+
             string sourceCode = File.ReadAllText(_filename);
             int position = 0;
             char currentChar;
-            string charAsString;
             string token;
 
             while (position < sourceCode.Length)
@@ -53,28 +38,42 @@ namespace Task0_1_Lexical
                     position++;
                     continue;
                 }
+
                 if (currentChar == ':' && position + 1 < sourceCode.Length && sourceCode[position + 1] == '=')
                 {
-                    writer.Write($"{_tokenCodes[":="]} ");
+                    int code = TokenTable.TokenCodes[":="];
+                    writer.Write($"{code} ");
+                    lexemeWriter.Write($"{code} ");
                     position += 2;
                     continue;
                 }
 
-                charAsString = currentChar.ToString();
+                string charAsString = currentChar.ToString();
 
-                if (_tokenCodes.ContainsKey(charAsString)
+                if (TokenTable.TokenCodes.ContainsKey(charAsString)
                     && !char.IsLetterOrDigit(currentChar)
                     && currentChar != '_')
                 {
-                    writer.Write($"{_tokenCodes[charAsString]} ");
+                    int code = TokenTable.TokenCodes[charAsString];
+                    writer.Write($"{code} ");
+                    lexemeWriter.Write($"{code} ");
                     position++;
                     continue;
                 }
 
                 if (char.IsDigit(currentChar))
                 {
-                    writer.Write($"{_tokenCodes[charAsString]} ");
-                    position++;
+                    _tokenBuilder.Clear();
+                    while (position < sourceCode.Length && char.IsDigit(sourceCode[position]))
+                    {
+                        _tokenBuilder.Append(sourceCode[position]);
+                        position++;
+                    }
+
+                    token = _tokenBuilder.ToString();
+                    int code = TokenTable.TokenCodes["CONST"];
+                    writer.Write($"{code} ");
+                    lexemeWriter.Write($"{code}:{token} ");
                     continue;
                 }
 
@@ -82,36 +81,43 @@ namespace Task0_1_Lexical
                 {
                     _tokenBuilder.Clear();
                     while (position < sourceCode.Length &&
-                          (char.IsLetterOrDigit(sourceCode[position]) ||
-                           sourceCode[position] == '_'))
+                           (char.IsLetterOrDigit(sourceCode[position]) || sourceCode[position] == '_'))
                     {
                         _tokenBuilder.Append(sourceCode[position]);
                         position++;
                     }
 
                     token = _tokenBuilder.ToString();
-                    if (_tokenCodes.TryGetValue(token, out int code))
+
+                    if (TokenTable.TokenCodes.TryGetValue(token.ToLower(), out int code))
                     {
                         writer.Write($"{code} ");
+                        lexemeWriter.Write($"{code} ");
                     }
                     else
                     {
-                        writer.Write($"{_tokenCodes["ID"]} ");
+                        int idCode = TokenTable.TokenCodes["ID"];
+                        writer.Write($"{idCode} ");
+                        lexemeWriter.Write($"{idCode}:{token} ");
                     }
+
                     continue;
                 }
 
+                // Неизвестный символ
                 writer.Write("0 ");
+                lexemeWriter.Write("0 ");
                 position++;
             }
         }
+
+
 
         public void AnalyzeSourceCode()
         {
             string[] sourceLines = File.ReadAllLines(_filename);
             int errorCount = 0;
             bool inBeginBlock = false;
-            bool inMultiLineComment = false;
             List<Match> tokenMatches = new List<Match>();
             string token;
 
@@ -188,7 +194,7 @@ namespace Task0_1_Lexical
 
                     if (!inSingleQuote && !inBraceComment)
                     {
-                        if (!_tokenCodes.ContainsKey(token.ToLower()) && !IsValidIdentifier(token))
+                        if (!TokenTable.TokenCodes.ContainsKey(token.ToLower()) && !IsValidIdentifier(token))
                         {
                             errorCount++;
                             LogError(errorCount, 202, $"Строка {lineIndex + 1}",

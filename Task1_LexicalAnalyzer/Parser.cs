@@ -1,297 +1,472 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Task0_1_Lexical;
-using static Task2_3_ParserSemantic.VarDeclNode;
+using System.Text;
+using Task0_1_Lexical;    // Для доступа к глобальному словарю кодов-токенов
 
 namespace Task2_3_ParserSemantic
 {
+
+    /// <summary>
+    /// Пара (Code, Lexeme). 
+    /// Code   — строковый код токена (например, "31" для идентификатора, "22" для цифры '1' и т.д.).
+    /// Lexeme — сам текст (например, "test", "a", "42"), либо null, если лексемы нет.
+    /// </summary>
+    public class Token
+    {
+        public string Code { get; }
+        public string Lexeme { get; }
+        public int Line { get; }
+
+        public Token(string code, string lexeme, int line = 1)
+        {
+            Code = code;
+            Lexeme = lexeme;
+            Line = line;
+        }
+
+        public override string ToString()
+        {
+            return Lexeme == null ? Code : $"{Code}:{Lexeme}";
+        }
+    }
+
+
     public class Parser
     {
-        private readonly List<string> _tokens;
+        private readonly List<Token> _tokens;
         private int _pos = 0;
         private int _line = 1;
 
-        private readonly Dictionary<string, string> tokenNames = new()
+        // Алиасы кодов из Lexer.TokenCodes
+        private const string TOK_PROGRAM = "1";   // "program"
+        private const string TOK_VAR = "2";   // "var"
+        private const string TOK_CONST = "3";   // "const"
+        private const string TOK_BEGIN = "4";   // "begin"
+        private const string TOK_END = "5";   // "end"
+        private const string TOK_INTEGER = "6";   // "integer"
+        private const string TOK_ARRAY = "7";   // "array"
+        private const string TOK_OF = "8";   // "of"
+
+        private const string TOK_ASSIGN = "9";   // ":="
+        private const string TOK_EQ = "10";  // "="
+        private const string TOK_PLUS = "11";  // "+"
+        private const string TOK_MINUS = "12";  // "-"
+        private const string TOK_MUL = "13";  // "*"
+        private const string TOK_DIV = "14";  // "/"
+
+        private const string TOK_LPAREN = "15";  // "("
+        private const string TOK_RPAREN = "16";  // ")"
+        private const string TOK_SEMI = "17";  // ";"
+        private const string TOK_COMMA = "18";  // ","
+        private const string TOK_DOT = "19";  // "."
+        private const string TOK_COLON = "20";  // ":"
+
+        // «21»..«30» — это коды однодигитных чисел ('0'..'9')
+        private static readonly HashSet<string> DigitTokenCodes = new HashSet<string>
         {
-            { "1", "program" }, { "2", "var" }, { "3", "const" }, { "4", "begin" }, { "5", "end" },
-            { "6", "integer" }, { "7", "array" }, { "ID", "идентификатор" }, { ":=", ":=" },
-            { ";", ";" }, { ":", ":" }, { ".", "." }, { "[", "[" }, { "]", "]" }, { "+", "+" }, { "-", "-" },
-            { "..", ".." }, { "of", "of" }
+            "21","22","23","24","25","26","27","28","29","30"
         };
 
-        public Parser(IEnumerable<string> tokens)
+        private const string TOK_ID = "31"; // «ID»
+
+        // Для дебаг-логов: человекочитаемое имя каждого кода
+        private static readonly Dictionary<string, string> TokenNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            { TOK_PROGRAM, "program" },
+            { TOK_VAR,     "var"     },
+            { TOK_CONST,   "const"   },
+            { TOK_BEGIN,   "begin"   },
+            { TOK_END,     "end"     },
+            { TOK_INTEGER, "integer" },
+            { TOK_ARRAY,   "array"   },
+            { TOK_OF,      "of"      },
+
+            { TOK_ASSIGN,  ":="    },
+            { TOK_EQ,      "="     },
+            { TOK_PLUS,    "+"     },
+            { TOK_MINUS,   "-"     },
+            { TOK_MUL,     "*"     },
+            { TOK_DIV,     "/"     },
+            { TOK_LPAREN,  "("     },
+            { TOK_RPAREN,  ")"     },
+            { TOK_SEMI,    ";"     },
+            { TOK_COMMA,   ","     },
+            { TOK_DOT,     "."     },
+            { TOK_COLON,   ":"     },
+
+            { TOK_ID,      "ID"    }
+        };
+
+        public Parser(IEnumerable<Token> tokens)
+        {
+            // Конвертируем в List<Token> для удобства
             _tokens = tokens.ToList();
         }
 
         public ProgramNode ParseProgram()
         {
+            Console.WriteLine("\nСинтаксический анализ:\n");
+            Console.WriteLine($"[Debug] Tokens count: {_tokens.Count}");
+            Console.WriteLine("[Debug] Start parsing program");
+
             var node = new ProgramNode();
 
-            // program <ID> ;
-            if (!Expect("1", "program")) SkipTo(new[] { "ID", ";" });
-            if (!Expect("ID", "идентификатор")) SkipTo(new[] { ";" });
-            Expect(";", ";");
+            // === Разбор «program <ID> ;» ===
+            Console.WriteLine("[Debug] Expect 'program'");
+            if (!Expect(TOK_PROGRAM, "program"))
+                SkipTo(new[] { TOK_ID, TOK_SEMI });
 
-            // var блок
-            if (Peek() == "2") // var
+            Console.WriteLine("[Debug] Expect identifier after 'program'");
+            if (!Expect(TOK_ID, "идентификатор"))
+                SkipTo(new[] { TOK_SEMI });
+
+            Console.WriteLine("[Debug] Expect ';' after program header");
+            Expect(TOK_SEMI, ";");
+
+            // === Блок «var ...» ===
+            if (PeekToken()?.Code == TOK_VAR)
             {
-                Read(); // пропустить "var"
-                while (Peek() == "ID")
+                Console.WriteLine("[Debug] Found 'var' block");
+                ReadToken(); // «2» = var
+
+                while (PeekToken()?.Code == TOK_ID)
                 {
-                    var name = Read(); // ID
+                    var nameTok = ReadToken(); // «31» = ID
+                    Console.WriteLine($"[Debug] Variable name: '{GetReadable(nameTok)}'");
 
-                    if (!Expect(":", ":")) { SkipTo(new[] { ";" }); ReadIf(";"); continue; }
-
-                    // Разбор типа: integer или array [ <число> .. <число> ] of integer
-                    if (Peek() == "6")
+                    Console.WriteLine("[Debug] Expect ':' before type");
+                    if (!Expect(TOK_COLON, ":"))
                     {
-                        // простые переменные
-                        var typeText = GetReadable(Read()); // "integer"
-                        node.Declarations.Add(new VarDeclNode { Name = name, Type = typeText });
-                    }
-                    else if (Peek() == "7")
-                    {
-                        Read(); // "array"
-                        var typeText = "array";
-
-                        if (!Expect("[", "[")) { SkipTo(new[] { ";" }); ReadIf(";"); continue; }
-
-                        // нижняя граница
-                        if (int.TryParse(Peek(), out var lower))
-                        {
-                            typeText += $"[{lower}";
-                            Read();
-                        }
-                        else
-                        {
-                            ReportSyntaxError("число");
-                            SkipTo(new[] { "..", "]", ";" });
-                            if (Peek() == "..") { Read(); }
-                            if (int.TryParse(Peek(), out lower))
-                            {
-                                typeText += $"[{lower}";
-                                Read();
-                            }
-                        }
-
-                        if (!Expect("..", "..")) { SkipTo(new[] { "]", ";" }); }
-
-                        // верхняя граница
-                        if (int.TryParse(Peek(), out var upper))
-                        {
-                            typeText += $"..{upper}]";
-                            Read();
-                        }
-                        else
-                        {
-                            ReportSyntaxError("число");
-                            SkipTo(new[] { "]", ";" });
-                            if (int.TryParse(Peek(), out upper))
-                            {
-                                typeText += $"..{upper}]";
-                                Read();
-                            }
-                        }
-
-                        if (!Expect("]", "]")) { SkipTo(new[] { "of", ";" }); }
-
-                        if (!Expect("of", "of")) { SkipTo(new[] { "6", ";" }); }
-
-                        if (Peek() == "6")
-                        {
-                            var baseType = GetReadable(Read()); // "integer"
-                            typeText += $" of {baseType}";
-                        }
-                        else
-                        {
-                            ReportSyntaxError("integer");
-                            SkipTo(new[] { ";" });
-                        }
-
-                        node.Declarations.Add(new VarDeclNode { Name = name, Type = typeText });
-                    }
-                    else
-                    {
-                        ReportSyntaxError("тип (integer или array)");
-                        SkipTo(new[] { ";" });
-                        ReadIf(";");
+                        SkipTo(new[] { TOK_SEMI });
+                        ReadIf(TOK_SEMI);
                         continue;
                     }
 
-                    Expect(";", ";");
+                    if (PeekToken()?.Code == TOK_INTEGER)
+                    {
+                        var typeTok = ReadToken(); // «6» = integer
+                        Console.WriteLine($"[Debug] Simple type: '{GetReadable(typeTok)}'");
+                        node.Declarations.Add(new VarDeclNode
+                        {
+                            Name = nameTok.Lexeme,
+                            Type = GetReadable(typeTok)
+                        });
+                    }
+                    else if (PeekToken()?.Code == TOK_ARRAY)
+                    {
+                        ReadToken(); // «7» = array
+                        Console.WriteLine("[Debug] Array declaration");
+                        string typeText = "array";
+
+                        Console.WriteLine("[Debug] Expect '['");
+                        if (!Expect("[", "["))
+                        {
+                            SkipTo(new[] { TOK_SEMI });
+                            ReadIf(TOK_SEMI);
+                            continue;
+                        }
+
+                        // Нижняя граница массива (многозначный литерал)
+                        if (TryCollectNumber(out int lower))
+                        {
+                            Console.WriteLine($"[Debug] Array lower bound: {lower}");
+                            typeText += $"[{lower}";
+                        }
+                        else
+                        {
+                            ReportSyntaxError("число", PeekToken());
+                            SkipTo(new[] { "..", "]", ";" });
+                            if (PeekToken()?.Code == "..")
+                                ReadToken();
+                            if (TryCollectNumber(out lower))
+                            {
+                                Console.WriteLine($"[Debug] (recovered) Array lower bound: {lower}");
+                                typeText += $"[{lower}";
+                            }
+                        }
+
+                        Console.WriteLine("[Debug] Expect '..'");
+                        if (!Expect("..", ".."))
+                            SkipTo(new[] { "]", ";" });
+
+                        // Верхняя граница массива
+                        if (TryCollectNumber(out int upper))
+                        {
+                            Console.WriteLine($"[Debug] Array upper bound: {upper}");
+                            typeText += $"..{upper}]";
+                        }
+                        else
+                        {
+                            ReportSyntaxError("число", PeekToken());
+                            SkipTo(new[] { "]", ";" });
+                            if (TryCollectNumber(out upper))
+                            {
+                                Console.WriteLine($"[Debug] (recovered) Array upper bound: {upper}");
+                                typeText += $"..{upper}]";
+                            }
+                        }
+
+                        Console.WriteLine("[Debug] Expect ']'");
+                        if (!Expect("]", "]"))
+                            SkipTo(new[] { TOK_OF, ";" });
+
+                        Console.WriteLine("[Debug] Expect 'of'");
+                        if (!Expect(TOK_OF, "of"))
+                            SkipTo(new[] { TOK_INTEGER, ";" });
+
+                        if (PeekToken()?.Code == TOK_INTEGER)
+                        {
+                            var baseTypeTok = ReadToken(); // «6» = integer
+                            Console.WriteLine($"[Debug] Array base type: '{GetReadable(baseTypeTok)}'");
+                            typeText += $" of {GetReadable(baseTypeTok)}";
+                        }
+                        else
+                        {
+                            ReportSyntaxError("integer", PeekToken());
+                            SkipTo(new[] { ";" });
+                        }
+
+                        node.Declarations.Add(new VarDeclNode
+                        {
+                            Name = nameTok.Lexeme,
+                            Type = typeText
+                        });
+                    }
+                    else
+                    {
+                        ReportSyntaxError("тип (integer или array)", PeekToken());
+                        SkipTo(new[] { TOK_SEMI });
+                        ReadIf(TOK_SEMI);
+                        continue;
+                    }
+
+                    Console.WriteLine("[Debug] Expect ';' after declaration");
+                    Expect(TOK_SEMI, ";");
                 }
             }
 
-            // begin ... end.
-            if (!Expect("4", "begin"))
-            {
-                SkipTo(new[] { "5", "." });
-            }
+            // === Разбор «begin ... end.» ===
+            Console.WriteLine("[Debug] Expect 'begin'");
+            if (!Expect(TOK_BEGIN, "begin"))
+                SkipTo(new[] { TOK_END, TOK_DOT });
             else
             {
-                // разобрали "begin"
-                while (Peek() != "5" && Peek() != null) // пока не "end"
+                Console.WriteLine("[Debug] Entering begin-end block");
+                while (PeekToken()?.Code != TOK_END && PeekToken() != null)
                 {
                     var stmt = ParseStatement();
                     if (stmt != null)
                         node.Statements.Add(stmt);
                 }
 
-                Expect("5", "end");
-                Expect(".", ".");
+                Console.WriteLine("[Debug] Expect 'end'");
+                Expect(TOK_END, "end");
+
+                Console.WriteLine("[Debug] Expect '.' after end");
+                Expect(TOK_DOT, ".");
             }
 
+            Console.WriteLine("[Debug] Finished parsing program\n");
             return node;
         }
 
         private StatementNode ParseStatement()
         {
-            if (Peek() == "4") // вложенный begin
+            if (PeekToken()?.Code == TOK_BEGIN)
             {
-                Read(); // "begin"
+                Console.WriteLine("[Debug] Nested 'begin' found");
+                ReadToken(); // «4» = begin
                 var comp = new CompoundNode();
-                while (Peek() != "5" && Peek() != null)
+                while (PeekToken()?.Code != TOK_END && PeekToken() != null)
                 {
                     var inner = ParseStatement();
                     if (inner != null)
                         comp.Statements.Add(inner);
                 }
-                Expect("5", "end");
-                Expect(";", ";"); // точку с запятой после end; (если нет — сообщаем ошибку, но продолжаем)
+                Console.WriteLine("[Debug] Expect 'end' for nested");
+                Expect(TOK_END, "end");
+                Console.WriteLine("[Debug] Expect ';' after nested end");
+                Expect(TOK_SEMI, ";");
                 return comp;
             }
 
-            if (Peek() == "ID")
+            if (PeekToken()?.Code == TOK_ID)
             {
-                var varName = Read(); // имя переменной
-                ExpressionNode index = null;
+                var nameTok = ReadToken(); // «31» = ID
+                Console.WriteLine($"[Debug] Parsing assignment to '{GetReadable(nameTok)}'");
 
-                if (Peek() == "[")
+                ExpressionNode index = null;
+                if (PeekToken()?.Code == "[")
                 {
-                    Read(); // "["
+                    ReadToken(); // «[»
                     index = ParseExpression();
+                    Console.WriteLine("[Debug] Expect ']' after index");
                     Expect("]", "]");
                 }
 
-                if (!Expect(":=", ":="))
+                Console.WriteLine("[Debug] Expect ':='");
+                if (!Expect(TOK_ASSIGN, ":="))
                 {
-                    SkipTo(new[] { ";" });
-                    ReadIf(";");
+                    SkipTo(new[] { TOK_SEMI });
+                    ReadIf(TOK_SEMI);
                     return null;
                 }
 
                 var expr = ParseExpression();
-
-                Expect(";", ";");
+                Console.WriteLine("[Debug] Expect ';' after assignment");
+                Expect(TOK_SEMI, ";");
 
                 return new AssignmentNode
                 {
-                    Variable = varName,
+                    Variable = nameTok.Lexeme,
                     IndexExpression = index,
                     Expression = expr
                 };
             }
 
-            ReportError($"Ожидалось начало оператора, найдено '{GetReadable(Peek())}'");
-            Read(); // пропустить неверный токен
+            ReportError($"Ожидалось начало оператора, найдено '{GetReadable(PeekToken())}'");
+            ReadToken();
             return null;
         }
 
         private ExpressionNode ParseExpression()
         {
             var left = ParseTerm();
-            while (Peek() == "+" || Peek() == "-")
+            while (PeekToken()?.Code == TOK_PLUS || PeekToken()?.Code == TOK_MINUS)
             {
-                var op = Read();
+                var opTok = ReadToken();
+                Console.WriteLine($"[Debug] Binary operator: '{GetReadable(opTok)}'");
                 var right = ParseTerm();
-                left = new BinaryExprNode { Op = op, Left = left, Right = right };
+                left = new BinaryExprNode
+                {
+                    Op = opTok.Lexeme,
+                    Left = left,
+                    Right = right
+                };
             }
             return left;
         }
 
         private ExpressionNode ParseTerm()
         {
-            if (int.TryParse(Peek(), out var num))
+            if (PeekToken() != null && DigitTokenCodes.Contains(PeekToken().Code))
             {
-                Read();
-                return new NumberNode { Value = num };
+                var sb = new StringBuilder();
+                while (PeekToken() != null && DigitTokenCodes.Contains(PeekToken().Code))
+                {
+                    var digTok = PeekToken();
+                    int digit = int.Parse(digTok.Code) - 21;
+                    sb.Append(digit);
+                    Console.WriteLine($"[Debug] Collect digit '{digit}' from token '{digTok.Code}'");
+                    ReadToken();
+                }
+                string numStr = sb.ToString();
+                if (int.TryParse(numStr, out int numValue))
+                {
+                    Console.WriteLine($"[Debug] Number literal: {numValue}");
+                    return new NumberNode { Value = numValue };
+                }
+                else
+                {
+                    ReportError($"Невалидное число '{numStr}'");
+                    return null;
+                }
             }
 
-            if (Peek() == "ID")
+            if (PeekToken()?.Code == TOK_ID)
             {
-                var name = Read();
-                if (Peek() == "[")
+                var idTok = ReadToken();
+                Console.WriteLine($"[Debug] Identifier: '{idTok.Lexeme}'");
+                if (PeekToken()?.Code == "[")
                 {
-                    Read(); // "["
+                    ReadToken(); // «[»
                     var idx = ParseExpression();
                     Expect("]", "]");
-                    return new IdentifierNode { Name = $"{name}[{FormatIndex(idx)}]" };
+                    return new IdentifierNode { Name = $"{idTok.Lexeme}[{FormatIndex(idx)}]" };
                 }
-                return new IdentifierNode { Name = name };
+                return new IdentifierNode { Name = idTok.Lexeme };
             }
 
-            ReportError($"Неожиданный токен в выражении: '{GetReadable(Peek())}'");
-            Read();
+            ReportError($"Неожиданный токен в выражении: '{GetReadable(PeekToken())}'");
+            ReadToken();
             return null;
         }
 
-        private string Peek() => _pos < _tokens.Count ? _tokens[_pos] : null;
-
-        private string Read()
+        private bool TryCollectNumber(out int value)
         {
-            if (_pos >= _tokens.Count) return null;
-            var tok = _tokens[_pos++];
-            if (tok == "EOL") _line++;
-            return tok;
-        }
-
-        /// <summary>
-        /// Проверяет, что Peek() равен expectedCode; если нет, вызывает ReportSyntaxError,
-        /// затем читает текущий токен (если он не null). Возвращает true, если ожидание совпало.
-        /// </summary>
-        private bool Expect(string expectedCode, string expectedName)
-        {
-            if (Peek() != expectedCode)
+            if (PeekToken() == null || !DigitTokenCodes.Contains(PeekToken().Code))
             {
-                ReportSyntaxError(expectedName);
-                if (Peek() != null)
-                    Read();
+                value = 0;
                 return false;
             }
-            Read();
+
+            var sb = new StringBuilder();
+            while (PeekToken() != null && DigitTokenCodes.Contains(PeekToken().Code))
+            {
+                var digTok = PeekToken();
+                int digit = int.Parse(digTok.Code) - 21;
+                sb.Append(digit);
+                Console.WriteLine($"[Debug] Collect digit '{digit}' from token '{digTok.Code}'");
+                ReadToken();
+            }
+
+            string numStr = sb.ToString();
+            if (int.TryParse(numStr, out int parsed))
+            {
+                value = parsed;
+                return true;
+            }
+            else
+            {
+                value = 0;
+                return false;
+            }
+        }
+
+        private bool Expect(string expectedCode, string expectedName)
+        {
+            var tok = PeekToken();
+            if (tok?.Code != expectedCode)
+            {
+                ReportSyntaxError(expectedName, tok);
+                if (tok != null)
+                {
+                    Console.WriteLine($"[Debug] Read token in Expect (mismatch): '{tok.Code}' '{tok.Lexeme}'");
+                    ReadToken();
+                }
+                return false;
+            }
+            ReadToken();
             return true;
         }
 
-        /// <summary>
-        /// Если Peek() равен токену code, читает его и возвращает true; иначе возвращает false.
-        /// </summary>
         private bool ReadIf(string code)
         {
-            if (Peek() == code)
+            if (PeekToken()?.Code == code)
             {
-                Read();
+                ReadToken();
                 return true;
             }
             return false;
         }
 
-        /// <summary>
-        /// Пропускает токены до тех пор, пока не встретит любой из синхронизирующих токенов из syncSet
-        /// или не дойдёт до конца. Затем останавливается перед этим токеном.
-        /// </summary>
         private void SkipTo(string[] syncSet)
         {
-            while (Peek() != null && !syncSet.Contains(Peek()))
+            Console.WriteLine($"[Debug] SkipTo synchronization tokens: {string.Join(", ", syncSet)}");
+            while (PeekToken() != null && !syncSet.Contains(PeekToken().Code))
             {
-                Read();
+                Console.WriteLine($"[Debug] Skipping token: '{PeekToken().Code}' '{PeekToken().Lexeme}'");
+                ReadToken();
             }
         }
 
-        private void ReportSyntaxError(string expected)
+        private void ReportSyntaxError(string expected, Token actual)
         {
-            Console.WriteLine($"[Синтаксическая ошибка] Строка {_line}: Ожидалось '{expected}', найдено '{GetReadable(Peek())}'");
+            string found = actual == null
+                ? "EOF"
+                : $"'{actual.Lexeme ?? actual.Code}' (код {actual.Code})";
+            Console.WriteLine($"[Синтаксическая ошибка] Строка {_line}: ожидалось '{expected}', найдено {found}");
         }
 
         private void ReportError(string msg)
@@ -299,15 +474,27 @@ namespace Task2_3_ParserSemantic
             Console.WriteLine($"[Синтаксическая ошибка] Строка {_line}: {msg}");
         }
 
-        private string GetReadable(string token)
+        private Token PeekToken() => _pos < _tokens.Count ? _tokens[_pos] : null;
+
+        private Token ReadToken()
         {
-            if (token == null) return "EOF";
-            return tokenNames.TryGetValue(token, out var name) ? name : token;
+            if (_pos >= _tokens.Count) return null;
+            var tok = _tokens[_pos++];
+            _line = tok.Line;
+            Console.WriteLine($"[Debug] Read token: '{tok.Code}' '{tok.Lexeme}' (line {tok.Line}, pos {_pos})");
+            return tok;
         }
 
-        /// <summary>
-        /// Вспомогательный метод для формирования текстового представления индексированного идентификатора.
-        /// </summary>
+        private string GetReadable(Token tok)
+        {
+            if (tok == null) return "EOF";
+            if (!string.IsNullOrEmpty(tok.Lexeme))
+                return tok.Lexeme;
+            return TokenNames.TryGetValue(tok.Code, out var name)
+                ? name
+                : tok.Code;
+        }
+
         private string FormatIndex(ExpressionNode idx)
         {
             return idx switch
@@ -318,7 +505,5 @@ namespace Task2_3_ParserSemantic
                 _ => ""
             };
         }
-
-
     }
 }

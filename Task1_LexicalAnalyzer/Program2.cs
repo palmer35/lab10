@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
+using System.Collections.Generic;
 using Task0_1_Lexical;
+using Task2_3_ParserSemantic;
 
 namespace Task2_3_ParserSemantic
 {
@@ -17,10 +19,32 @@ namespace Task2_3_ParserSemantic
             }
 
             var lexer = new Lexer(path);
-            lexer.GenerateCharCodes("output.txt");
+            lexer.GenerateTokenCodes("output_lexemes.txt");
 
-            var raw = File.ReadAllText("output.txt");
-            var tokens = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var raw = File.ReadAllText("output_lexemes.txt");
+            var tokenStrings = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            // Преобразование строк в объекты Token
+            var tokens = new List<Token>();
+            foreach (var item in tokenStrings)
+            {
+                string code;
+                string lexeme;
+
+                if (item.Contains(":"))
+                {
+                    var parts = item.Split(':', 2);
+                    code = parts[0];
+                    lexeme = parts[1];
+                }
+                else
+                {
+                    code = item;
+                    lexeme = null;
+                }
+
+                tokens.Add(new Token(code, lexeme));
+            }
 
             Console.WriteLine("\nСинтаксический анализ:");
             var parser = new Parser(tokens);

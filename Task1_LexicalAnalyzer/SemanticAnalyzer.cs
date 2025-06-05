@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using static Task2_3_ParserSemantic.VarDeclNode;
 
 namespace Task2_3_ParserSemantic
 {
     /// <summary>
-    /// Представляет информацию о типе переменной:
-    /// - IsArray = false  => simpleType (“integer”)
-    /// - IsArray = true   => массив с диапазоном [Lower..Upper] и элементарным типом BaseType
+    /// Содержит информацию о типе переменной:
+    /// - IsArray = false  → простой тип ("integer")
+    /// - IsArray = true   → массив с диапазоном [Lower..Upper] и элементарным типом BaseType
     /// </summary>
     public class TypeInfo
     {
@@ -61,36 +60,45 @@ namespace Task2_3_ParserSemantic
                     continue;
                 }
 
-                // Разбираем строку decl.Type: либо "integer", либо "array[L..U] of integer"
-                if (decl.Type.StartsWith("integer"))
+                // Разбираем decl.Type: либо "integer", либо "array[L..U] of integer"
+                var typeText = decl.Type.Trim();
+                if (typeText.Equals("integer", StringComparison.OrdinalIgnoreCase))
                 {
                     _symbolTable[decl.Name] = new TypeInfo("integer");
                     Console.WriteLine($"Переменная '{decl.Name}' объявлена как 'integer'");
                 }
-                else if (decl.Type.StartsWith("array"))
+                else if (typeText.StartsWith("array[", StringComparison.OrdinalIgnoreCase) &&
+                         typeText.EndsWith("] of integer", StringComparison.OrdinalIgnoreCase))
                 {
                     // пример: "array[3..10] of integer"
                     try
                     {
-                        // находим цифры между '[' и '..', а затем между '..' и ']'
-                        var insideBrackets = decl.Type.Substring(
-                            decl.Type.IndexOf('[') + 1,
-                            decl.Type.IndexOf(']') - decl.Type.IndexOf('[') - 1
+                        // извлекаем содержимое между '[' и ']'
+                        int leftBracket = typeText.IndexOf('[');
+                        int rightBracket = typeText.IndexOf(']');
+                        var insideBrackets = typeText.Substring(
+                            leftBracket + 1,
+                            rightBracket - leftBracket - 1
                         );
+
                         var parts = insideBrackets.Split("..", StringSplitOptions.RemoveEmptyEntries);
                         if (parts.Length != 2)
                             throw new Exception();
 
-                        int lower = int.Parse(parts[0]);
-                        int upper = int.Parse(parts[1]);
+                        if (!int.TryParse(parts[0], out int lower) ||
+                            !int.TryParse(parts[1], out int upper))
+                        {
+                            throw new Exception();
+                        }
 
-                        // проверяем, что дальше идёт " of integer"
-                        var ofIndex = decl.Type.IndexOf("of", StringComparison.Ordinal);
+                        // проверяем " of integer"
+                        // (вырезаем после "] of")
+                        var ofIndex = typeText.IndexOf("of", rightBracket, StringComparison.OrdinalIgnoreCase);
                         if (ofIndex < 0)
                             throw new Exception();
 
-                        var baseType = decl.Type.Substring(ofIndex + 2).Trim();
-                        if (baseType != "integer")
+                        var baseType = typeText.Substring(ofIndex + 2).Trim();
+                        if (!baseType.Equals("integer", StringComparison.OrdinalIgnoreCase))
                             throw new Exception();
 
                         _symbolTable[decl.Name] = new TypeInfo(lower, upper, "integer");
@@ -107,7 +115,7 @@ namespace Task2_3_ParserSemantic
                 }
             }
 
-            // 2) Обработка операторов
+            // 2) Обработка операторов присваивания и составных блоков
             foreach (var stmt in program.Statements)
             {
                 if (_errorCount >= MaxErrors)
@@ -136,7 +144,7 @@ namespace Task2_3_ParserSemantic
             }
             else if (stmt is AssignmentNode assign)
             {
-                // 1) Проверяем, есть ли переменная в таблице
+                // 1) Проверяем, что переменная объявлена
                 if (!_symbolTable.ContainsKey(assign.Variable))
                 {
                     ReportError($"Переменная '{assign.Variable}' не объявлена");
@@ -145,7 +153,7 @@ namespace Task2_3_ParserSemantic
                 {
                     var typeInfo = _symbolTable[assign.Variable];
 
-                    // 2) Индексирование: если IndexExpression != null, то переменная должна быть массивом
+                    // 2) Индексирование: если IndexExpression != null, переменная должна быть массивом
                     if (assign.IndexExpression != null)
                     {
                         if (!typeInfo.IsArray)
@@ -170,16 +178,16 @@ namespace Task2_3_ParserSemantic
                         // Если переменная — массив, но без индексации — ошибка
                         if (typeInfo.IsArray)
                         {
-                            ReportError($"✖ Нельзя присваивать элементу массива '{assign.Variable}' без индекса");
+                            ReportError($"✖ Нельзя присваивать массиву '{assign.Variable}' без указания индекса");
                         }
                     }
                 }
 
-                // 3) Проверяем выражение справа (если ещё не превысили лимит ошибок)
+                // 3) Проверяем выражение справа, если ещё не достигнут лимит ошибок
                 if (_errorCount < MaxErrors)
                     AnalyzeExpression(assign.Expression);
 
-                // 4) Проверяем индекс (если он есть и лимит ошибок не превышен)
+                // 4) Ещё раз проверяем индекс (если он есть)
                 if (_errorCount < MaxErrors && assign.IndexExpression != null)
                     AnalyzeExpression(assign.IndexExpression);
             }
@@ -198,7 +206,7 @@ namespace Task2_3_ParserSemantic
                     break;
 
                 case IdentifierNode id:
-                    // Может быть имя переменной; если содержит "[...]", проверим только имя до '['
+                    // Имя может быть "x" или "x[5]" — сравним только часть до '['
                     var rawName = id.Name;
                     var varName = rawName.Contains("[")
                         ? rawName.Substring(0, rawName.IndexOf('['))
@@ -211,11 +219,11 @@ namespace Task2_3_ParserSemantic
                     break;
 
                 case NumberNode _:
-                    // литерал всегда корректен
+                    // Число само по себе корректно
                     break;
 
                 default:
-                    // другие узлы (если добавятся) пока игнорируем
+                    // другие узлы пока игнорируем
                     break;
             }
         }
